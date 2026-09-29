@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE jasperReport PUBLIC "-//JasperReports//DTD Report Design//EN"
+  "http://jasperreports.sourceforge.net/dtds/jasperreport.dtd">
+<!--
+  AEOS Circuit / Network Component Report
+  Tables: networkcomponent, accesspoint, entrance, aepu
+
+  networkcomponent represents physical I/O points (door contacts, REX, tamper inputs, etc.)
+  networkcomponent.aeostype identifies the component type (e.g. DOOR_CONTACT, REX, ALARM_INPUT)
+  networkcomponent.inputid is the physical input number on the controller
+-->
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports
+    http://jasperreports.sourceforge.net/xsd/jasperreport.xsd"
+  name="CircuitReport"
+  pageWidth="842" pageHeight="595" orientation="Landscape"
+  columnWidth="782" leftMargin="30" rightMargin="30" topMargin="20" bottomMargin="20"
+  whenNoDataType="AllSectionsNoDetail">
+
+  <!-- PARAMETERS -->
+  <parameter name="P_HOSTNAME_FILTER" class="java.lang.String" isForPrompting="true"><defaultValueExpression><![CDATA["%"]]></defaultValueExpression></parameter>
+  <parameter name="P_TYPE_FILTER"     class="java.lang.String" isForPrompting="true"><defaultValueExpression><![CDATA["%"]]></defaultValueExpression></parameter>
+
+  <queryString language="SQL"><![CDATA[
+    SELECT
+        nc.objectid                         AS nc_id,
+        nc.hostname                         AS hostname,
+        nc.componentname                    AS component_name,
+        nc.aeostype                         AS component_type,
+        nc.inputid                          AS input_id,
+        nc.label                            AS label,
+        ap.accesspointname                  AS access_point_name,
+        ap.type                             AS ap_type,
+        e.name                              AS entrance_name,
+        e.location                          AS entrance_location
+    FROM        networkcomponent    nc
+    LEFT JOIN   accesspoint         ap  ON ap.hostname     = nc.hostname
+                                       AND ap.removaldate  IS NULL
+    LEFT JOIN   entrance            e   ON e.objectid      = ap.entranceassignmentid
+                                       AND e.removaldate   IS NULL
+    WHERE
+        nc.hostname       LIKE $P{P_HOSTNAME_FILTER}
+        AND (nc.aeostype  LIKE $P{P_TYPE_FILTER} OR nc.aeostype IS NULL)
+    ORDER BY nc.hostname, nc.componentname
+  ]]></queryString>
+
+  <field name="nc_id"             class="java.lang.Long"/>
+  <field name="hostname"          class="java.lang.String"/>
+  <field name="component_name"    class="java.lang.String"/>
+  <field name="component_type"    class="java.lang.String"/>
+  <field name="input_id"          class="java.lang.Integer"/>
+  <field name="label"             class="java.lang.String"/>
+  <field name="access_point_name" class="java.lang.String"/>
+  <field name="ap_type"           class="java.lang.String"/>
+  <field name="entrance_name"     class="java.lang.String"/>
+  <field name="entrance_location" class="java.lang.String"/>
+
+  <!-- GROUP by hostname/controller -->
+  <group name="HostGroup" isKeepTogether="false">
+    <groupExpression><![CDATA[$F{hostname}]]></groupExpression>
+    <groupHeader>
+      <band height="18">
+        <rectangle><reportElement x="0" y="2" width="782" height="14" backcolor="#2E6DA4"/><graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+        <textField><reportElement x="6" y="3" width="500" height="10" forecolor="#FFFFFF"/>
+          <textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement>
+          <textFieldExpression><![CDATA["Controller: " + $F{hostname}]]></textFieldExpression>
+        </textField>
+      </band>
+    </groupHeader>
+  </group>
+
+  <!-- TITLE -->
+  <title>
+    <band height="50">
+      <rectangle><reportElement x="0" y="0" width="782" height="50" backcolor="#1A3A5C"/><graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+      <staticText><reportElement x="10" y="8" width="500" height="30" forecolor="#FFFFFF"/>
+        <textElement verticalAlignment="Middle"><font fontName="DejaVu Sans" size="18" isBold="true"/></textElement>
+        <text><![CDATA[AEOS – Circuit / Network Component Report]]></text></staticText>
+      <textField><reportElement x="530" y="30" width="242" height="14" forecolor="#AACCEE"/>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA["Generated: " + new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm").format(new java.util.Date())]]></textFieldExpression>
+      </textField>
+    </band>
+  </title>
+
+  <!-- COLUMN HEADER -->
+  <columnHeader>
+    <band height="22">
+      <rectangle><reportElement x="0" y="0" width="782" height="22" backcolor="#3D7DBF"/><graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+      <staticText><reportElement x="4"   y="4" width="130" height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Component Name]]></text></staticText>
+      <staticText><reportElement x="140" y="4" width="100" height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Type (aeostype)]]></text></staticText>
+      <staticText><reportElement x="245" y="4" width="40"  height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Input#]]></text></staticText>
+      <staticText><reportElement x="290" y="4" width="150" height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Label]]></text></staticText>
+      <staticText><reportElement x="445" y="4" width="130" height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Access Point]]></text></staticText>
+      <staticText><reportElement x="580" y="4" width="60"  height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[AP Type]]></text></staticText>
+      <staticText><reportElement x="645" y="4" width="135" height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Entrance]]></text></staticText>
+    </band>
+  </columnHeader>
+
+  <!-- DETAIL -->
+  <detail>
+    <band height="15" splitType="Stretch">
+      <rectangle><reportElement x="0" y="0" width="782" height="15" backcolor="#EAF2FB" mode="Opaque">
+        <printWhenExpression><![CDATA[$V{REPORT_COUNT} % 2 == 0]]></printWhenExpression></reportElement>
+        <graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+      <textField><reportElement x="4"   y="2" width="130" height="11"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{component_name}]]></textFieldExpression></textField>
+      <textField><reportElement x="140" y="2" width="100" height="11"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{component_type}!=null?$F{component_type}:"—"]]></textFieldExpression></textField>
+      <textField><reportElement x="245" y="2" width="40"  height="11"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{input_id}!=null?$F{input_id}.toString():"—"]]></textFieldExpression></textField>
+      <textField isStretchWithOverflow="true"><reportElement x="290" y="2" width="150" height="11"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{label}!=null?$F{label}:"—"]]></textFieldExpression></textField>
+      <textField><reportElement x="445" y="2" width="130" height="11"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{access_point_name}!=null?$F{access_point_name}:"—"]]></textFieldExpression></textField>
+      <textField><reportElement x="580" y="2" width="60"  height="11"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{ap_type}!=null?$F{ap_type}:"—"]]></textFieldExpression></textField>
+      <textField isStretchWithOverflow="true"><reportElement x="645" y="2" width="135" height="11"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{entrance_name}!=null?$F{entrance_name}+($F{entrance_location}!=null?" ("+$F{entrance_location}+")":""):"—"]]></textFieldExpression></textField>
+    </band>
+  </detail>
+
+  <!-- SUMMARY -->
+  <summary>
+    <band height="20">
+      <rectangle><reportElement x="0" y="0" width="782" height="20" backcolor="#1A3A5C"/><graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+      <staticText><reportElement x="4" y="4" width="130" height="12" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="8" isBold="true"/></textElement><text><![CDATA[Total Components:]]></text></staticText>
+      <textField><reportElement x="138" y="4" width="60" height="12" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="8" isBold="true"/></textElement>
+        <textFieldExpression><![CDATA[$V{REPORT_COUNT}]]></textFieldExpression></textField>
+    </band>
+  </summary>
+
+  <pageFooter>
+    <band height="16">
+      <line><reportElement x="0" y="0" width="782" height="1" forecolor="#CCCCCC"/></line>
+      <staticText><reportElement x="0" y="3" width="400" height="10"/><textElement><font fontName="DejaVu Sans" size="6" isItalic="true"/></textElement><text><![CDATA[AEOS Circuit Report  |  CONFIDENTIAL]]></text></staticText>
+      <textField><reportElement x="600" y="3" width="182" height="10"/><textElement textAlignment="Right"><font fontName="DejaVu Sans" size="6"/></textElement>
+        <textFieldExpression><![CDATA["Page " + $V{PAGE_NUMBER}]]></textFieldExpression></textField>
+    </band>
+  </pageFooter>
+
+</jasperReport>

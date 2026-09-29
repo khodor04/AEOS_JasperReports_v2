@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE jasperReport PUBLIC "-//JasperReports//DTD Report Design//EN"
+  "http://jasperreports.sourceforge.net/dtds/jasperreport.dtd">
+<!--
+  AEOS Device Report
+  Tables: aepu, accesspoint, entrance
+  aepu = door controller (AEprocessing unit)
+  accesspoint links to aepu via accesspoint.hostname = aepu.hostname
+-->
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports
+    http://jasperreports.sourceforge.net/xsd/jasperreport.xsd"
+  name="DeviceReport"
+  pageWidth="842" pageHeight="595" orientation="Landscape"
+  columnWidth="782" leftMargin="30" rightMargin="30" topMargin="20" bottomMargin="20"
+  whenNoDataType="AllSectionsNoDetail">
+
+  <!-- PARAMETERS -->
+  <parameter name="P_HOSTNAME_FILTER" class="java.lang.String" isForPrompting="true"><defaultValueExpression><![CDATA["%"]]></defaultValueExpression></parameter>
+  <parameter name="P_AP_TYPE_FILTER"  class="java.lang.String" isForPrompting="true"><defaultValueExpression><![CDATA["%"]]></defaultValueExpression></parameter>
+
+  <queryString language="SQL"><![CDATA[
+    SELECT
+        a.objectid                          AS aepu_id,
+        a.hostname                          AS hostname,
+        a.aeosversion                       AS firmware_version,
+        a.lasttimediscovered                AS last_discovered,
+        a.lasttimediscarded                 AS last_discarded,
+        a.removaldate                       AS removal_date,
+        COUNT(ap.objectid)                  AS reader_count,
+        STUFF(
+          (SELECT ', ' + ap2.accesspointname + ' (' + ISNULL(ap2.type,'?') + ')'
+           FROM   accesspoint ap2
+           WHERE  ap2.hostname = a.hostname
+             AND  ap2.removaldate IS NULL
+           FOR XML PATH('')), 1, 2, '')     AS access_points,
+        STUFF(
+          (SELECT ', ' + e2.name
+           FROM   accesspoint ap3
+           JOIN   entrance    e2 ON e2.objectid = ap3.entranceassignmentid
+           WHERE  ap3.hostname = a.hostname
+             AND  ap3.removaldate IS NULL
+           FOR XML PATH('')), 1, 2, '')     AS entrances
+    FROM        aepu        a
+    LEFT JOIN   accesspoint ap  ON ap.hostname    = a.hostname
+                                AND ap.removaldate IS NULL
+    WHERE
+        a.hostname LIKE $P{P_HOSTNAME_FILTER}
+        AND a.removaldate IS NULL
+    GROUP BY
+        a.objectid, a.hostname, a.aeosversion,
+        a.lasttimediscovered, a.lasttimediscarded, a.removaldate
+    ORDER BY a.hostname
+  ]]></queryString>
+
+  <field name="aepu_id"          class="java.lang.Long"/>
+  <field name="hostname"         class="java.lang.String"/>
+  <field name="firmware_version" class="java.lang.String"/>
+  <field name="last_discovered"  class="java.sql.Timestamp"/>
+  <field name="last_discarded"   class="java.util.Date"/>
+  <field name="removal_date"     class="java.util.Date"/>
+  <field name="reader_count"     class="java.lang.Long"/>
+  <field name="access_points"    class="java.lang.String"/>
+  <field name="entrances"        class="java.lang.String"/>
+
+  <!-- TITLE -->
+  <title>
+    <band height="50">
+      <rectangle><reportElement x="0" y="0" width="782" height="50" backcolor="#1A3A5C"/><graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+      <staticText><reportElement x="10" y="8" width="500" height="30" forecolor="#FFFFFF"/>
+        <textElement verticalAlignment="Middle"><font fontName="DejaVu Sans" size="18" isBold="true"/></textElement>
+        <text><![CDATA[AEOS – Device (AEpu) Report]]></text></staticText>
+      <textField><reportElement x="530" y="30" width="242" height="14" forecolor="#AACCEE"/>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA["Generated: " + new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm").format(new java.util.Date())]]></textFieldExpression>
+      </textField>
+    </band>
+  </title>
+
+  <!-- COLUMN HEADER -->
+  <columnHeader>
+    <band height="22">
+      <rectangle><reportElement x="0" y="0" width="782" height="22" backcolor="#2E6DA4"/><graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+      <staticText><reportElement x="4"   y="4" width="140" height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Hostname (Controller)]]></text></staticText>
+      <staticText><reportElement x="150" y="4" width="80"  height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[AEOS Version]]></text></staticText>
+      <staticText><reportElement x="235" y="4" width="120" height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Last Discovered]]></text></staticText>
+      <staticText><reportElement x="360" y="4" width="40"  height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[APs]]></text></staticText>
+      <staticText><reportElement x="405" y="4" width="175" height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Access Points]]></text></staticText>
+      <staticText><reportElement x="585" y="4" width="195" height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Linked Entrances]]></text></staticText>
+    </band>
+  </columnHeader>
+
+  <!-- DETAIL -->
+  <detail>
+    <band height="20" splitType="Stretch">
+      <rectangle><reportElement x="0" y="0" width="782" height="20" backcolor="#EAF2FB" mode="Opaque">
+        <printWhenExpression><![CDATA[$V{REPORT_COUNT} % 2 == 0]]></printWhenExpression></reportElement>
+        <graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+      <textField><reportElement x="4"   y="3" width="140" height="14"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement>
+        <textFieldExpression><![CDATA[$F{hostname}]]></textFieldExpression></textField>
+      <textField><reportElement x="150" y="3" width="80"  height="14"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{firmware_version}!=null?$F{firmware_version}:"—"]]></textFieldExpression></textField>
+      <textField pattern="dd/MM/yyyy HH:mm"><reportElement x="235" y="3" width="120" height="14"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{last_discovered}]]></textFieldExpression></textField>
+      <textField><reportElement x="360" y="3" width="40"  height="14"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{reader_count}]]></textFieldExpression></textField>
+      <textField isStretchWithOverflow="true"><reportElement x="405" y="3" width="175" height="14"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{access_points}!=null?$F{access_points}:"—"]]></textFieldExpression></textField>
+      <textField isStretchWithOverflow="true"><reportElement x="585" y="3" width="195" height="14"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{entrances}!=null?$F{entrances}:"—"]]></textFieldExpression></textField>
+    </band>
+  </detail>
+
+  <!-- SUMMARY -->
+  <summary>
+    <band height="20">
+      <rectangle><reportElement x="0" y="0" width="782" height="20" backcolor="#1A3A5C"/><graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+      <staticText><reportElement x="4" y="4" width="120" height="12" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="8" isBold="true"/></textElement><text><![CDATA[Total Controllers:]]></text></staticText>
+      <textField><reportElement x="128" y="4" width="60" height="12" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="8" isBold="true"/></textElement>
+        <textFieldExpression><![CDATA[$V{REPORT_COUNT}]]></textFieldExpression></textField>
+    </band>
+  </summary>
+
+  <pageFooter>
+    <band height="16">
+      <line><reportElement x="0" y="0" width="782" height="1" forecolor="#CCCCCC"/></line>
+      <staticText><reportElement x="0" y="3" width="400" height="10"/><textElement><font fontName="DejaVu Sans" size="6" isItalic="true"/></textElement><text><![CDATA[AEOS Device Report  |  CONFIDENTIAL]]></text></staticText>
+      <textField><reportElement x="600" y="3" width="182" height="10"/><textElement textAlignment="Right"><font fontName="DejaVu Sans" size="6"/></textElement>
+        <textFieldExpression><![CDATA["Page " + $V{PAGE_NUMBER}]]></textFieldExpression></textField>
+    </band>
+  </pageFooter>
+
+</jasperReport>

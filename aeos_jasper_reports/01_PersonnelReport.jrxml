@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE jasperReport PUBLIC "-//JasperReports//DTD Report Design//EN"
+  "http://jasperreports.sourceforge.net/dtds/jasperreport.dtd">
+<!--
+  AEOS Personnel Report
+  Tables: carrier, token, tokenassignment, authorizationtemplate, profile_template
+  carrier.carriertype: 1=Employee, 2=Visitor, 3=Contractor
+-->
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports
+    http://jasperreports.sourceforge.net/xsd/jasperreport.xsd"
+  name="PersonnelReport"
+  pageWidth="842" pageHeight="595" orientation="Landscape"
+  columnWidth="782" leftMargin="30" rightMargin="30" topMargin="20" bottomMargin="20"
+  whenNoDataType="AllSectionsNoDetail">
+
+  <!-- PARAMETERS -->
+  <parameter name="P_NAME_FILTER"     class="java.lang.String"  isForPrompting="true"><defaultValueExpression><![CDATA["%"]]></defaultValueExpression></parameter>
+  <parameter name="P_CARD_NUMBER"     class="java.lang.String"  isForPrompting="true"><defaultValueExpression><![CDATA["%"]]></defaultValueExpression></parameter>
+  <parameter name="P_CARD_RANGE_FROM" class="java.lang.String"  isForPrompting="true"><defaultValueExpression><![CDATA["0"]]></defaultValueExpression></parameter>
+  <parameter name="P_CARD_RANGE_TO"   class="java.lang.String"  isForPrompting="true"><defaultValueExpression><![CDATA["999999999"]]></defaultValueExpression></parameter>
+  <parameter name="P_FILE_NUMBER"     class="java.lang.String"  isForPrompting="true"><defaultValueExpression><![CDATA["%"]]></defaultValueExpression></parameter>
+  <!-- carriertype filter: 1=Employee only, use % for all -->
+  <parameter name="P_CARRIER_TYPE"    class="java.lang.Integer" isForPrompting="true"><defaultValueExpression><![CDATA[1]]></defaultValueExpression></parameter>
+
+  <queryString language="SQL"><![CDATA[
+    SELECT
+        c.objectid                                              AS carrier_id,
+        LTRIM(RTRIM(c.lastname))                                AS last_name,
+        LTRIM(RTRIM(c.initials))                                AS initials,
+        LTRIM(RTRIM(c.middlename))                              AS middle_name,
+        c.personnelnr                                           AS file_number,
+        dep.name                                                AS department,
+        c.company                                               AS company,
+        c.email                                                 AS email,
+        c.phonenumber                                           AS phone,
+        c.mobilephonenumber                                     AS mobile,
+        c.arrivaldatetime                                       AS valid_from,
+        c.leavedatetime                                         AS valid_until,
+        ap.blocked                                              AS is_blocked,
+        t.badgenumber                                           AS card_number,
+        t.badgenumbernumeric                                    AS card_number_numeric,
+        it.name                                                 AS identifier_type,
+        STUFF(
+          (SELECT ', ' + at2.name
+           FROM   profile_template pt2
+           JOIN   authorizationtemplate at2 ON at2.objectid = pt2.templateobjectid
+           WHERE  pt2.profileobjectid = c.profileobjectid
+             AND  pt2.active = 'Y'
+           FOR XML PATH('')), 1, 2, '')                        AS access_levels
+    FROM        carrier              c
+    LEFT JOIN   authorizationprofile ap  ON ap.objectid      = c.profileobjectid
+    LEFT JOIN   department           dep ON dep.objectid      = c.departmentobjectid
+    LEFT JOIN   tokenassignment      ta  ON ta.carrierobjectid = c.objectid
+                                       AND ta.withdrawn        = 0
+    LEFT JOIN   token                t   ON t.objectid         = ta.identifierobjectid
+                                       AND t.blocked           = 0
+                                       AND t.removaldate       IS NULL
+    LEFT JOIN   identifiertype       it  ON it.objectid        = t.identifiertype_objectid
+    WHERE
+        c.carriertype   = $P{P_CARRIER_TYPE}
+        AND c.removaldate IS NULL
+        AND (LTRIM(RTRIM(c.lastname)) + ' ' + LTRIM(RTRIM(c.initials))) LIKE $P{P_NAME_FILTER}
+        AND (t.badgenumber LIKE $P{P_CARD_NUMBER} OR t.badgenumber IS NULL)
+        AND (t.badgenumbernumeric BETWEEN CAST($P{P_CARD_RANGE_FROM} AS BIGINT)
+                                      AND CAST($P{P_CARD_RANGE_TO}   AS BIGINT)
+             OR t.badgenumbernumeric IS NULL)
+        AND (c.personnelnr LIKE $P{P_FILE_NUMBER} OR c.personnelnr IS NULL)
+    ORDER BY c.lastname, c.initials
+  ]]></queryString>
+
+  <field name="carrier_id"         class="java.lang.Long"/>
+  <field name="last_name"          class="java.lang.String"/>
+  <field name="initials"           class="java.lang.String"/>
+  <field name="middle_name"        class="java.lang.String"/>
+  <field name="file_number"        class="java.lang.String"/>
+  <field name="department"         class="java.lang.String"/>
+  <field name="company"            class="java.lang.String"/>
+  <field name="email"              class="java.lang.String"/>
+  <field name="phone"              class="java.lang.String"/>
+  <field name="mobile"             class="java.lang.String"/>
+  <field name="valid_from"         class="java.util.Date"/>
+  <field name="valid_until"        class="java.util.Date"/>
+  <field name="is_blocked"         class="java.lang.String"/>
+  <field name="card_number"        class="java.lang.String"/>
+  <field name="card_number_numeric" class="java.lang.Long"/>
+  <field name="identifier_type"    class="java.lang.String"/>
+  <field name="access_levels"      class="java.lang.String"/>
+
+  <!-- TITLE -->
+  <title>
+    <band height="50">
+      <rectangle><reportElement x="0" y="0" width="782" height="50" backcolor="#1A3A5C"/><graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+      <staticText><reportElement x="10" y="8" width="560" height="34" forecolor="#FFFFFF"/>
+        <textElement verticalAlignment="Middle"><font fontName="DejaVu Sans" size="18" isBold="true"/></textElement>
+        <text><![CDATA[AEOS – Personnel Report]]></text></staticText>
+      <textField><reportElement x="570" y="8" width="202" height="16" forecolor="#FFFFFF"/>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="8"/></textElement>
+        <textFieldExpression><![CDATA["Generated: " + new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm").format(new java.util.Date())]]></textFieldExpression>
+      </textField>
+      <textField><reportElement x="570" y="28" width="202" height="14" forecolor="#AACCEE"/>
+        <textElement textAlignment="Right"><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA["Type filter: " + ($P{P_CARRIER_TYPE}==1?"Employee":$P{P_CARRIER_TYPE}==2?"Visitor":"Contractor")]]></textFieldExpression>
+      </textField>
+    </band>
+  </title>
+
+  <!-- COLUMN HEADER -->
+  <columnHeader>
+    <band height="22">
+      <rectangle><reportElement x="0" y="0" width="782" height="22" backcolor="#2E6DA4"/><graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+      <staticText><reportElement x="2"   y="4" width="110" height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Name]]></text></staticText>
+      <staticText><reportElement x="118" y="4" width="55"  height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[File No.]]></text></staticText>
+      <staticText><reportElement x="178" y="4" width="80"  height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Department]]></text></staticText>
+      <staticText><reportElement x="263" y="4" width="80"  height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Card Number]]></text></staticText>
+      <staticText><reportElement x="348" y="4" width="70"  height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[ID Type]]></text></staticText>
+      <staticText><reportElement x="423" y="4" width="65"  height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Valid From]]></text></staticText>
+      <staticText><reportElement x="493" y="4" width="65"  height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Valid Until]]></text></staticText>
+      <staticText><reportElement x="563" y="4" width="40"  height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Blocked]]></text></staticText>
+      <staticText><reportElement x="608" y="4" width="172" height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Access Templates]]></text></staticText>
+    </band>
+  </columnHeader>
+
+  <!-- DETAIL -->
+  <detail>
+    <band height="16" splitType="Stretch">
+      <rectangle><reportElement x="0" y="0" width="782" height="16" backcolor="#EAF2FB" mode="Opaque">
+        <printWhenExpression><![CDATA[$V{REPORT_COUNT} % 2 == 0]]></printWhenExpression></reportElement>
+        <graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+      <textField isStretchWithOverflow="true"><reportElement x="2"   y="2" width="110" height="12"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{last_name} + ($F{middle_name}!=null&&!$F{middle_name}.isEmpty()?" "+$F{middle_name}:"") + ", " + ($F{initials}!=null?$F{initials}:"")]]></textFieldExpression></textField>
+      <textField><reportElement x="118" y="2" width="55"  height="12"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{file_number}]]></textFieldExpression></textField>
+      <textField><reportElement x="178" y="2" width="80"  height="12"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{department}]]></textFieldExpression></textField>
+      <textField><reportElement x="263" y="2" width="80"  height="12"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{card_number}!=null?$F{card_number}:"—"]]></textFieldExpression></textField>
+      <textField><reportElement x="348" y="2" width="70"  height="12"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{identifier_type}!=null?$F{identifier_type}:"—"]]></textFieldExpression></textField>
+      <textField pattern="dd/MM/yyyy"><reportElement x="423" y="2" width="65"  height="12"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{valid_from}]]></textFieldExpression></textField>
+      <textField pattern="dd/MM/yyyy"><reportElement x="493" y="2" width="65"  height="12"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{valid_until}]]></textFieldExpression></textField>
+      <textField><reportElement x="563" y="2" width="40"  height="12"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA["Y".equals($F{is_blocked})?"YES":"No"]]></textFieldExpression></textField>
+      <textField isStretchWithOverflow="true"><reportElement x="608" y="2" width="172" height="12"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{access_levels}!=null?$F{access_levels}:"—"]]></textFieldExpression></textField>
+    </band>
+  </detail>
+
+  <!-- SUMMARY -->
+  <summary>
+    <band height="20">
+      <rectangle><reportElement x="0" y="0" width="782" height="20" backcolor="#1A3A5C"/><graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+      <staticText><reportElement x="4" y="4" width="100" height="12" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="8" isBold="true"/></textElement><text><![CDATA[Total Records:]]></text></staticText>
+      <textField><reportElement x="108" y="4" width="60" height="12" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="8" isBold="true"/></textElement>
+        <textFieldExpression><![CDATA[$V{REPORT_COUNT}]]></textFieldExpression></textField>
+    </band>
+  </summary>
+
+  <pageFooter>
+    <band height="16">
+      <line><reportElement x="0" y="0" width="782" height="1" forecolor="#CCCCCC"/></line>
+      <staticText><reportElement x="0" y="3" width="400" height="10"/><textElement><font fontName="DejaVu Sans" size="6" isItalic="true"/></textElement><text><![CDATA[AEOS Personnel Report  |  CONFIDENTIAL]]></text></staticText>
+      <textField><reportElement x="600" y="3" width="182" height="10"/><textElement textAlignment="Right"><font fontName="DejaVu Sans" size="6"/></textElement>
+        <textFieldExpression><![CDATA["Page " + $V{PAGE_NUMBER}]]></textFieldExpression></textField>
+    </band>
+  </pageFooter>
+
+</jasperReport>

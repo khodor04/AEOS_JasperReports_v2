@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE jasperReport PUBLIC "-//JasperReports//DTD Report Design//EN"
+  "http://jasperreports.sourceforge.net/dtds/jasperreport.dtd">
+<!--
+  AEOS Who Is IN Report
+  Tables: presenceindication, carrier, entrance, zone, zoneassignment, department, token, tokenassignment
+
+  presenceindication.direction: 1=IN, 2=OUT
+  This query returns carriers whose LAST presenceindication record is direction=1 (currently IN)
+  It uses a subquery to get the latest record per carrier per zone.
+-->
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports
+    http://jasperreports.sourceforge.net/xsd/jasperreport.xsd"
+  name="WhoIsInReport"
+  pageWidth="595" pageHeight="842" orientation="Portrait"
+  columnWidth="535" leftMargin="30" rightMargin="30" topMargin="20" bottomMargin="20"
+  whenNoDataType="AllSectionsNoDetail">
+
+  <!-- PARAMETERS -->
+  <parameter name="P_ZONE_NAME"  class="java.lang.String" isForPrompting="true"><defaultValueExpression><![CDATA["%"]]></defaultValueExpression></parameter>
+  <parameter name="P_AS_OF"      class="java.sql.Timestamp" isForPrompting="true"/>
+
+  <queryString language="SQL"><![CDATA[
+    SELECT
+        z.name                          AS zone_name,
+        c.objectid                      AS carrier_id,
+        LTRIM(RTRIM(c.lastname))        AS last_name,
+        LTRIM(RTRIM(c.initials))        AS initials,
+        c.personnelnr                   AS file_number,
+        dep.name                        AS department,
+        c.company                       AS company,
+        tk.badgenumber                  AS card_number,
+        pi_latest.latest_ts             AS entry_time
+    FROM (
+        -- Latest presenceindication per carrier per zone
+        SELECT
+            pi.carrieroid,
+            pi.countzoneoid,
+            MAX(pi.timestamp)           AS latest_ts
+        FROM presenceindication pi
+        WHERE ($P{P_AS_OF} IS NULL OR pi.timestamp <= $P{P_AS_OF})
+        GROUP BY pi.carrieroid, pi.countzoneoid
+    ) pi_latest
+    JOIN presenceindication pi_actual
+        ON  pi_actual.carrieroid    = pi_latest.carrieroid
+        AND pi_actual.countzoneoid  = pi_latest.countzoneoid
+        AND pi_actual.timestamp     = pi_latest.latest_ts
+        AND pi_actual.direction     = 1              -- direction 1 = IN
+    JOIN zone                z   ON z.objectid   = pi_latest.countzoneoid
+                                 AND z.name LIKE $P{P_ZONE_NAME}
+    JOIN carrier             c   ON c.objectid   = pi_latest.carrieroid
+                                 AND c.removaldate IS NULL
+    LEFT JOIN department     dep ON dep.objectid = c.departmentobjectid
+    LEFT JOIN tokenassignment ta ON ta.carrierobjectid = c.objectid AND ta.withdrawn = 0
+    LEFT JOIN token          tk  ON tk.objectid  = ta.identifierobjectid AND tk.blocked = 0
+    ORDER BY z.name, c.lastname, c.initials
+  ]]></queryString>
+
+  <field name="zone_name"   class="java.lang.String"/>
+  <field name="carrier_id"  class="java.lang.Long"/>
+  <field name="last_name"   class="java.lang.String"/>
+  <field name="initials"    class="java.lang.String"/>
+  <field name="file_number" class="java.lang.String"/>
+  <field name="department"  class="java.lang.String"/>
+  <field name="company"     class="java.lang.String"/>
+  <field name="card_number" class="java.lang.String"/>
+  <field name="entry_time"  class="java.sql.Timestamp"/>
+
+  <variable name="ZONE_COUNT" class="java.lang.Integer" resetType="Group" resetGroup="ZoneGroup" calculation="Count">
+    <variableExpression><![CDATA[$F{carrier_id}]]></variableExpression>
+  </variable>
+
+  <!-- GROUP by zone -->
+  <group name="ZoneGroup" isKeepTogether="false">
+    <groupExpression><![CDATA[$F{zone_name}]]></groupExpression>
+    <groupHeader>
+      <band height="20">
+        <rectangle><reportElement x="0" y="2" width="535" height="16" backcolor="#1A3A5C"/><graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+        <textField><reportElement x="6" y="4" width="400" height="12" forecolor="#FFFFFF"/>
+          <textElement><font fontName="DejaVu Sans" size="8" isBold="true"/></textElement>
+          <textFieldExpression><![CDATA["Zone: " + $F{zone_name}]]></textFieldExpression>
+        </textField>
+      </band>
+    </groupHeader>
+    <groupFooter>
+      <band height="16">
+        <rectangle><reportElement x="0" y="0" width="535" height="14" backcolor="#D6E8F8"/><graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+        <staticText><reportElement x="4" y="2" width="160" height="10"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement>
+          <text><![CDATA[Persons currently IN this zone:]]></text></staticText>
+        <textField><reportElement x="168" y="2" width="50" height="10"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement>
+          <textFieldExpression><![CDATA[$V{ZONE_COUNT}]]></textFieldExpression></textField>
+      </band>
+    </groupFooter>
+  </group>
+
+  <!-- TITLE -->
+  <title>
+    <band height="56">
+      <rectangle><reportElement x="0" y="0" width="535" height="56" backcolor="#1A3A5C"/><graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+      <staticText><reportElement x="10" y="6" width="400" height="24" forecolor="#FFFFFF"/>
+        <textElement verticalAlignment="Middle"><font fontName="DejaVu Sans" size="16" isBold="true"/></textElement>
+        <text><![CDATA[AEOS – Who Is IN Report]]></text></staticText>
+      <textField><reportElement x="10" y="36" width="515" height="14" forecolor="#AACCEE"/>
+        <textElement><font fontName="DejaVu Sans" size="8"/></textElement>
+        <textFieldExpression><![CDATA["Snapshot: " + ($P{P_AS_OF}!=null?new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss").format($P{P_AS_OF}):"NOW") + "  |  Zone filter: " + $P{P_ZONE_NAME}]]></textFieldExpression>
+      </textField>
+    </band>
+  </title>
+
+  <!-- COLUMN HEADER -->
+  <columnHeader>
+    <band height="20">
+      <rectangle><reportElement x="0" y="0" width="535" height="20" backcolor="#2E6DA4"/><graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+      <staticText><reportElement x="4"   y="4" width="130" height="12" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Name]]></text></staticText>
+      <staticText><reportElement x="140" y="4" width="55"  height="12" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[File No.]]></text></staticText>
+      <staticText><reportElement x="200" y="4" width="90"  height="12" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Department]]></text></staticText>
+      <staticText><reportElement x="295" y="4" width="80"  height="12" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Card Number]]></text></staticText>
+      <staticText><reportElement x="380" y="4" width="155" height="12" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Entry Time]]></text></staticText>
+    </band>
+  </columnHeader>
+
+  <!-- DETAIL -->
+  <detail>
+    <band height="15">
+      <rectangle><reportElement x="0" y="0" width="535" height="15" backcolor="#EAF2FB" mode="Opaque">
+        <printWhenExpression><![CDATA[$V{REPORT_COUNT} % 2 == 0]]></printWhenExpression></reportElement>
+        <graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+      <textField><reportElement x="4"   y="2" width="130" height="11"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{last_name} + ", " + ($F{initials}!=null?$F{initials}:"")]]></textFieldExpression></textField>
+      <textField><reportElement x="140" y="2" width="55"  height="11"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{file_number}!=null?$F{file_number}:"—"]]></textFieldExpression></textField>
+      <textField><reportElement x="200" y="2" width="90"  height="11"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{department}!=null?$F{department}:"—"]]></textFieldExpression></textField>
+      <textField><reportElement x="295" y="2" width="80"  height="11"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{card_number}!=null?$F{card_number}:"—"]]></textFieldExpression></textField>
+      <textField pattern="dd/MM/yyyy HH:mm:ss"><reportElement x="380" y="2" width="155" height="11"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{entry_time}]]></textFieldExpression></textField>
+    </band>
+  </detail>
+
+  <!-- SUMMARY -->
+  <summary>
+    <band height="20">
+      <rectangle><reportElement x="0" y="0" width="535" height="20" backcolor="#1A3A5C"/><graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+      <staticText><reportElement x="4" y="4" width="160" height="12" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="8" isBold="true"/></textElement>
+        <text><![CDATA[Total persons currently IN:]]></text></staticText>
+      <textField><reportElement x="168" y="4" width="60" height="12" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="8" isBold="true"/></textElement>
+        <textFieldExpression><![CDATA[$V{REPORT_COUNT}]]></textFieldExpression></textField>
+    </band>
+  </summary>
+
+  <pageFooter>
+    <band height="16">
+      <line><reportElement x="0" y="0" width="535" height="1" forecolor="#CCCCCC"/></line>
+      <staticText><reportElement x="0" y="3" width="300" height="10"/><textElement><font fontName="DejaVu Sans" size="6" isItalic="true"/></textElement><text><![CDATA[AEOS Who Is IN  |  CONFIDENTIAL]]></text></staticText>
+      <textField><reportElement x="390" y="3" width="145" height="10"/><textElement textAlignment="Right"><font fontName="DejaVu Sans" size="6"/></textElement>
+        <textFieldExpression><![CDATA["Page " + $V{PAGE_NUMBER}]]></textFieldExpression></textField>
+    </band>
+  </pageFooter>
+
+</jasperReport>

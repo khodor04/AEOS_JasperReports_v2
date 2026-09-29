@@ -1,0 +1,11 @@
+# Generated report output containing real employee data (PII) - never commit
+DailyReports/
+FirstInLastOut_*.csv
+FirstInLastOut_*.xlsx
+test_output.csv
+verify_fix.csv
+verify_fix_empty.csv
+
+# OS / editor cruft
+Thumbs.db
+.DS_Store

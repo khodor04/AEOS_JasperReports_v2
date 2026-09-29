@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE jasperReport PUBLIC "-//JasperReports//DTD Report Design//EN"
+  "http://jasperreports.sourceforge.net/dtds/jasperreport.dtd">
+<!--
+  AEOS First IN / Last OUT Report
+  Tables: eventlog, eventtype, carrier, token, tokenassignment, department
+
+  eventlog.eventtype links to eventtype.objectid
+  Granted access event = eventtype.eventcategory 1 (ACCESS_GRANTED)
+  eventlog.intvalue: direction — 1=IN, 2=OUT
+  Verified 2026-08-18 against live aeosdb data: intvalue=1 events peak at 07:00-10:00
+  (arrival) and intvalue=2 events peak at 16:00-18:00 (departure) across ~2M rows —
+  confirms the 1=IN / 2=OUT convention on this installation.
+-->
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports
+    http://jasperreports.sourceforge.net/xsd/jasperreport.xsd"
+  name="FirstInLastOutReport"
+  pageWidth="842" pageHeight="595" orientation="Landscape"
+  columnWidth="782" leftMargin="30" rightMargin="30" topMargin="20" bottomMargin="20"
+  whenNoDataType="AllSectionsNoDetail">
+
+  <!-- PARAMETERS -->
+  <parameter name="P_DATE_FROM"   class="java.sql.Timestamp" isForPrompting="true"/>
+  <parameter name="P_DATE_TO"     class="java.sql.Timestamp" isForPrompting="true"/>
+  <parameter name="P_NAME_FILTER" class="java.lang.String"   isForPrompting="true"><defaultValueExpression><![CDATA["%"]]></defaultValueExpression></parameter>
+  <parameter name="P_CARD_NUMBER" class="java.lang.String"   isForPrompting="true"><defaultValueExpression><![CDATA["%"]]></defaultValueExpression></parameter>
+  <parameter name="P_FILE_NUMBER" class="java.lang.String"   isForPrompting="true"><defaultValueExpression><![CDATA["%"]]></defaultValueExpression></parameter>
+
+  <queryString language="SQL"><![CDATA[
+    SELECT
+        c.objectid                          AS carrier_id,
+        LTRIM(RTRIM(c.lastname))            AS last_name,
+        LTRIM(RTRIM(c.initials))            AS initials,
+        c.personnelnr                       AS file_number,
+        dep.name                            AS department,
+        badges.card_number                  AS card_number,
+        CAST(el.timestamp AS DATE)          AS activity_date,
+        -- First IN of day: earliest granted access event with intvalue=1 (IN)
+        MIN(CASE WHEN el.intvalue = 1 THEN el.timestamp END) AS first_in,
+        -- Last OUT of day: latest granted access event with intvalue=2 (OUT)
+        MAX(CASE WHEN el.intvalue = 2 THEN el.timestamp END) AS last_out,
+        DATEDIFF(MINUTE,
+            MIN(CASE WHEN el.intvalue = 1 THEN el.timestamp END),
+            MAX(CASE WHEN el.intvalue = 2 THEN el.timestamp END)) AS duration_minutes,
+        COUNT(el.objectid)                  AS event_count
+    FROM        eventlog         el
+    JOIN        eventtype        et  ON et.objectid  = el.eventtype
+                                    AND et.eventcategory = 1         -- access granted only
+    JOIN        carrier          c   ON c.objectid   = el.carrierid
+                                    AND c.carriertype = 1            -- employees only
+                                    AND c.removaldate IS NULL
+    LEFT JOIN   department       dep ON dep.objectid  = c.departmentobjectid
+    -- one row per employee even if they hold multiple active badges
+    OUTER APPLY (
+        SELECT STRING_AGG(x.badgenumber, ', ') AS card_number
+        FROM (
+            SELECT DISTINCT tk.badgenumber
+            FROM   tokenassignment ta
+            JOIN   token           tk ON tk.objectid = ta.identifierobjectid
+            WHERE  ta.carrierobjectid = c.objectid AND ta.withdrawn = 0
+        ) x
+    ) badges
+    WHERE
+        el.timestamp >= $P{P_DATE_FROM}
+        AND el.timestamp <= $P{P_DATE_TO}
+        AND (LTRIM(RTRIM(c.lastname)) + ' ' + LTRIM(RTRIM(c.initials))) LIKE $P{P_NAME_FILTER}
+        AND (badges.card_number LIKE $P{P_CARD_NUMBER} OR badges.card_number IS NULL)
+        AND (c.personnelnr      LIKE $P{P_FILE_NUMBER} OR c.personnelnr      IS NULL)
+    GROUP BY
+        c.objectid, c.lastname, c.initials, c.personnelnr,
+        dep.name, badges.card_number, CAST(el.timestamp AS DATE)
+    ORDER BY c.lastname, c.initials, CAST(el.timestamp AS DATE)
+  ]]></queryString>
+
+  <field name="carrier_id"      class="java.lang.Long"/>
+  <field name="last_name"       class="java.lang.String"/>
+  <field name="initials"        class="java.lang.String"/>
+  <field name="file_number"     class="java.lang.String"/>
+  <field name="department"      class="java.lang.String"/>
+  <field name="card_number"     class="java.lang.String"/>
+  <field name="activity_date"   class="java.sql.Date"/>
+  <field name="first_in"        class="java.sql.Timestamp"/>
+  <field name="last_out"        class="java.sql.Timestamp"/>
+  <field name="duration_minutes" class="java.lang.Integer"/>
+  <field name="event_count"     class="java.lang.Long"/>
+
+  <!-- GROUP by employee -->
+  <group name="CarrierGroup">
+    <groupExpression><![CDATA[$F{carrier_id}]]></groupExpression>
+    <groupHeader>
+      <band height="18">
+        <rectangle><reportElement x="0" y="1" width="782" height="16" backcolor="#D6E8F8"/><graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+        <textField><reportElement x="4" y="3" width="500" height="12"/>
+          <textElement><font fontName="DejaVu Sans" size="8" isBold="true"/></textElement>
+          <textFieldExpression><![CDATA[$F{last_name} + ", " + ($F{initials}!=null?$F{initials}:"") + "  |  File No: " + ($F{file_number}!=null?$F{file_number}:"—") + "  |  Card: " + ($F{card_number}!=null?$F{card_number}:"—") + "  |  Dept: " + ($F{department}!=null?$F{department}:"—")]]></textFieldExpression>
+        </textField>
+      </band>
+    </groupHeader>
+  </group>
+
+  <!-- TITLE -->
+  <title>
+    <band height="56">
+      <rectangle><reportElement x="0" y="0" width="782" height="56" backcolor="#1A3A5C"/><graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+      <staticText><reportElement x="10" y="6" width="500" height="26" forecolor="#FFFFFF"/>
+        <textElement verticalAlignment="Middle"><font fontName="DejaVu Sans" size="18" isBold="true"/></textElement>
+        <text><![CDATA[AEOS – First IN / Last OUT Report]]></text></staticText>
+      <textField><reportElement x="10" y="36" width="762" height="14" forecolor="#AACCEE"/>
+        <textElement><font fontName="DejaVu Sans" size="8"/></textElement>
+        <textFieldExpression><![CDATA["Period: " + new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm").format($P{P_DATE_FROM}) + "  →  " + new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm").format($P{P_DATE_TO})]]></textFieldExpression>
+      </textField>
+    </band>
+  </title>
+
+  <!-- COLUMN HEADER -->
+  <columnHeader>
+    <band height="20">
+      <rectangle><reportElement x="0" y="0" width="782" height="20" backcolor="#3D7DBF"/><graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+      <staticText><reportElement x="4"   y="4" width="80"  height="12" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Date]]></text></staticText>
+      <staticText><reportElement x="90"  y="4" width="120" height="12" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[First Event (IN)]]></text></staticText>
+      <staticText><reportElement x="215" y="4" width="120" height="12" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Last Event (OUT)]]></text></staticText>
+      <staticText><reportElement x="340" y="4" width="90"  height="12" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Duration (HH:MM)]]></text></staticText>
+      <staticText><reportElement x="435" y="4" width="60"  height="12" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Events]]></text></staticText>
+    </band>
+  </columnHeader>
+
+  <!-- DETAIL -->
+  <detail>
+    <band height="15">
+      <rectangle><reportElement x="0" y="0" width="782" height="15" backcolor="#EAF2FB" mode="Opaque">
+        <printWhenExpression><![CDATA[$V{REPORT_COUNT} % 2 == 0]]></printWhenExpression></reportElement>
+        <graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+      <textField pattern="dd/MM/yyyy"><reportElement x="4"   y="2" width="80"  height="11"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{activity_date}]]></textFieldExpression></textField>
+      <textField pattern="HH:mm:ss"><reportElement x="90"  y="2" width="120" height="11"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{first_in}]]></textFieldExpression></textField>
+      <textField pattern="HH:mm:ss"><reportElement x="215" y="2" width="120" height="11"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{last_out}]]></textFieldExpression></textField>
+      <textField><reportElement x="340" y="2" width="90"  height="11"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{duration_minutes}!=null?String.format("%02d:%02d",$F{duration_minutes}/60,$F{duration_minutes}%60):"—"]]></textFieldExpression></textField>
+      <textField><reportElement x="435" y="2" width="60"  height="11"/><textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA[$F{event_count}]]></textFieldExpression></textField>
+    </band>
+  </detail>
+
+  <pageFooter>
+    <band height="16">
+      <line><reportElement x="0" y="0" width="782" height="1" forecolor="#CCCCCC"/></line>
+      <staticText><reportElement x="0" y="3" width="400" height="10"/><textElement><font fontName="DejaVu Sans" size="6" isItalic="true"/></textElement><text><![CDATA[AEOS First IN / Last OUT  |  CONFIDENTIAL]]></text></staticText>
+      <textField><reportElement x="600" y="3" width="182" height="10"/><textElement textAlignment="Right"><font fontName="DejaVu Sans" size="6"/></textElement>
+        <textFieldExpression><![CDATA["Page " + $V{PAGE_NUMBER}]]></textFieldExpression></textField>
+    </band>
+  </pageFooter>
+
+</jasperReport>

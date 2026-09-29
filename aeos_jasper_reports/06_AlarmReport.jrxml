@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE jasperReport PUBLIC "-//JasperReports//DTD Report Design//EN"
+  "http://jasperreports.sourceforge.net/dtds/jasperreport.dtd">
+<!--
+  AEOS Alarm Report
+  Tables: alarm, alarmpointentry, alarmpoint, eventlog, eventtype, carrier, accesspoint, entrance
+  alarm.state: 0=Open/Active, 1=Acknowledged, 2=Closed
+  alarm.statechangedate: when the alarm last changed state
+
+  eventtype.alarm = 1 means the event type generates an alarm
+  eventtype.eventcategory codes (standard AEOS):
+    0 = System event
+    1 = Access granted
+    2 = Access denied / invalid access
+    3 = Alarm (forced entry, tamper, power failure, door held, etc.)
+    4 = Communication event
+
+  This report joins alarm to its source eventlog entry for full context.
+-->
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports
+    http://jasperreports.sourceforge.net/xsd/jasperreport.xsd"
+  name="AlarmReport"
+  pageWidth="842" pageHeight="595" orientation="Landscape"
+  columnWidth="782" leftMargin="30" rightMargin="30" topMargin="20" bottomMargin="20"
+  whenNoDataType="AllSectionsNoDetail">
+
+  <!-- PARAMETERS -->
+  <parameter name="P_DATE_FROM"     class="java.sql.Timestamp" isForPrompting="true"/>
+  <parameter name="P_DATE_TO"       class="java.sql.Timestamp" isForPrompting="true"/>
+  <!-- alarm.state filter: -1=All, 0=Active, 1=Acknowledged, 2=Closed -->
+  <parameter name="P_ALARM_STATE"   class="java.lang.Integer"  isForPrompting="true"><defaultValueExpression><![CDATA[-1]]></defaultValueExpression></parameter>
+  <parameter name="P_ALARM_POINT"   class="java.lang.String"   isForPrompting="true"><defaultValueExpression><![CDATA["%"]]></defaultValueExpression></parameter>
+  <parameter name="P_HOSTNAME"      class="java.lang.String"   isForPrompting="true"><defaultValueExpression><![CDATA["%"]]></defaultValueExpression></parameter>
+  <parameter name="P_NAME_FILTER"   class="java.lang.String"   isForPrompting="true"><defaultValueExpression><![CDATA["%"]]></defaultValueExpression></parameter>
+  <parameter name="P_CARD_NUMBER"   class="java.lang.String"   isForPrompting="true"><defaultValueExpression><![CDATA["%"]]></defaultValueExpression></parameter>
+
+  <queryString language="SQL"><![CDATA[
+    SELECT
+        al.objectid                         AS alarm_id,
+        al.statechangedate                  AS alarm_time,
+        al.state                            AS alarm_state,
+        al.priority                         AS priority,
+        al.counter                          AS counter,
+        ap_pt.name                          AS alarm_point_name,
+        et.name                             AS event_type_name,
+        et.eventcategory                    AS event_category,
+        el.timestamp                        AS event_timestamp,
+        el.hostname                         AS source_hostname,
+        el.attributes                       AS attributes,
+        ac.accesspointname                  AS access_point_name,
+        en.name                             AS entrance_name,
+        en.location                         AS entrance_location,
+        c.lastname                          AS last_name,
+        c.initials                          AS initials,
+        c.personnelnr                       AS file_number,
+        tk.badgenumber                      AS card_number,
+        au.username                         AS ack_by_user,
+        al.routabletime                     AS routable_time
+    FROM        alarm               al
+    JOIN        alarmpointentry     ape ON ape.objectid    = al.alarmpointentry_oid
+    JOIN        alarmpoint          ap_pt ON ap_pt.objectid = ape.alarmpointoid
+    JOIN        eventlog            el  ON el.objectid     = al.eventlog_oid
+    JOIN        eventtype           et  ON et.objectid     = el.eventtype
+    LEFT JOIN   accesspoint         ac  ON ac.objectid     = el.accesspointid
+                                       AND ac.removaldate  IS NULL
+    LEFT JOIN   entrance            en  ON en.objectid     = el.entranceid
+                                       AND en.removaldate  IS NULL
+    LEFT JOIN   carrier             c   ON c.objectid      = el.carrierid
+    LEFT JOIN   tokenassignment     ta  ON ta.carrierobjectid = c.objectid AND ta.withdrawn = 0
+    LEFT JOIN   token               tk  ON tk.objectid     = ta.identifierobjectid AND tk.blocked = 0
+    LEFT JOIN   aeosuser            au  ON au.objectid     = al.user_oid
+    WHERE
+        al.statechangedate >= $P{P_DATE_FROM}
+        AND al.statechangedate <= $P{P_DATE_TO}
+        AND ($P{P_ALARM_STATE} = -1 OR al.state = $P{P_ALARM_STATE})
+        AND ap_pt.name LIKE $P{P_ALARM_POINT}
+        AND (el.hostname LIKE $P{P_HOSTNAME} OR el.hostname IS NULL)
+        AND (
+              (LTRIM(RTRIM(c.lastname)) + ' ' + LTRIM(RTRIM(c.initials))) LIKE $P{P_NAME_FILTER}
+              OR c.objectid IS NULL
+            )
+        AND (tk.badgenumber LIKE $P{P_CARD_NUMBER} OR tk.badgenumber IS NULL)
+    ORDER BY al.statechangedate DESC
+  ]]></queryString>
+
+  <field name="alarm_id"          class="java.lang.Long"/>
+  <field name="alarm_time"        class="java.util.Date"/>
+  <field name="alarm_state"       class="java.lang.Integer"/>
+  <field name="priority"          class="java.lang.Integer"/>
+  <field name="counter"           class="java.lang.Integer"/>
+  <field name="alarm_point_name"  class="java.lang.String"/>
+  <field name="event_type_name"   class="java.lang.String"/>
+  <field name="event_category"    class="java.lang.Integer"/>
+  <field name="event_timestamp"   class="java.util.Date"/>
+  <field name="source_hostname"   class="java.lang.String"/>
+  <field name="attributes"        class="java.lang.String"/>
+  <field name="access_point_name" class="java.lang.String"/>
+  <field name="entrance_name"     class="java.lang.String"/>
+  <field name="entrance_location" class="java.lang.String"/>
+  <field name="last_name"         class="java.lang.String"/>
+  <field name="initials"          class="java.lang.String"/>
+  <field name="file_number"       class="java.lang.String"/>
+  <field name="card_number"       class="java.lang.String"/>
+  <field name="ack_by_user"       class="java.lang.String"/>
+  <field name="routable_time"     class="java.util.Date"/>
+
+  <variable name="TYPE_COUNT" class="java.lang.Integer" resetType="Group" resetGroup="AlarmPointGroup" calculation="Count">
+    <variableExpression><![CDATA[$F{alarm_id}]]></variableExpression>
+  </variable>
+
+  <!-- GROUP by alarm point -->
+  <group name="AlarmPointGroup" isKeepTogether="false">
+    <groupExpression><![CDATA[$F{alarm_point_name}]]></groupExpression>
+    <groupHeader>
+      <band height="18">
+        <rectangle><reportElement x="0" y="2" width="782" height="14" backcolor="#8B0000"/><graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+        <textField><reportElement x="6" y="2" width="500" height="12" forecolor="#FFFFFF"/>
+          <textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement>
+          <textFieldExpression><![CDATA["Alarm Point: " + $F{alarm_point_name}]]></textFieldExpression>
+        </textField>
+      </band>
+    </groupHeader>
+    <groupFooter>
+      <band height="14">
+        <rectangle><reportElement x="0" y="0" width="782" height="14" backcolor="#F5E6E6"/><graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+        <staticText><reportElement x="4" y="2" width="110" height="10"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement><text><![CDATA[Subtotal:]]></text></staticText>
+        <textField><reportElement x="118" y="2" width="60" height="10"/><textElement><font fontName="DejaVu Sans" size="7" isBold="true"/></textElement>
+          <textFieldExpression><![CDATA[$V{TYPE_COUNT}]]></textFieldExpression></textField>
+      </band>
+    </groupFooter>
+  </group>
+
+  <!-- TITLE -->
+  <title>
+    <band height="58">
+      <rectangle><reportElement x="0" y="0" width="782" height="58" backcolor="#6B0000"/><graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+      <staticText><reportElement x="10" y="6" width="500" height="26" forecolor="#FFFFFF"/>
+        <textElement verticalAlignment="Middle"><font fontName="DejaVu Sans" size="18" isBold="true"/></textElement>
+        <text><![CDATA[AEOS – Alarm Report]]></text></staticText>
+      <textField><reportElement x="10" y="36" width="762" height="14" forecolor="#FFAAAA"/>
+        <textElement><font fontName="DejaVu Sans" size="7"/></textElement>
+        <textFieldExpression><![CDATA["Period: " + new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm").format($P{P_DATE_FROM}) + "  →  " + new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm").format($P{P_DATE_TO}) + "   State: " + ($P{P_ALARM_STATE}==-1?"All":$P{P_ALARM_STATE}==0?"Active":$P{P_ALARM_STATE}==1?"Acknowledged":"Closed") + "   Alarm Point: " + $P{P_ALARM_POINT} + "   Host: " + $P{P_HOSTNAME}]]></textFieldExpression>
+      </textField>
+    </band>
+  </title>
+
+  <!-- COLUMN HEADER -->
+  <columnHeader>
+    <band height="22">
+      <rectangle><reportElement x="0" y="0" width="782" height="22" backcolor="#8B0000"/><graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+      <staticText><reportElement x="4"   y="4" width="105" height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="6" isBold="true"/></textElement><text><![CDATA[Alarm Date/Time]]></text></staticText>
+      <staticText><reportElement x="115" y="4" width="50"  height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="6" isBold="true"/></textElement><text><![CDATA[State]]></text></staticText>
+      <staticText><reportElement x="170" y="4" width="35"  height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="6" isBold="true"/></textElement><text><![CDATA[Prio]]></text></staticText>
+      <staticText><reportElement x="210" y="4" width="100" height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="6" isBold="true"/></textElement><text><![CDATA[Event Type]]></text></staticText>
+      <staticText><reportElement x="315" y="4" width="100" height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="6" isBold="true"/></textElement><text><![CDATA[Access Point]]></text></staticText>
+      <staticText><reportElement x="420" y="4" width="95"  height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="6" isBold="true"/></textElement><text><![CDATA[Entrance]]></text></staticText>
+      <staticText><reportElement x="520" y="4" width="90"  height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="6" isBold="true"/></textElement><text><![CDATA[Cardholder]]></text></staticText>
+      <staticText><reportElement x="615" y="4" width="65"  height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="6" isBold="true"/></textElement><text><![CDATA[Card No.]]></text></staticText>
+      <staticText><reportElement x="685" y="4" width="95"  height="14" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="6" isBold="true"/></textElement><text><![CDATA[ACK By]]></text></staticText>
+    </band>
+  </columnHeader>
+
+  <!-- DETAIL -->
+  <detail>
+    <band height="15" splitType="Stretch">
+      <rectangle><reportElement x="0" y="0" width="782" height="15" backcolor="#FDF0F0" mode="Opaque">
+        <printWhenExpression><![CDATA[$V{REPORT_COUNT} % 2 == 0]]></printWhenExpression></reportElement>
+        <graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+
+      <!-- Red left border for unacknowledged alarms (state=0) -->
+      <rectangle><reportElement x="0" y="0" width="3" height="15" backcolor="#FF0000">
+        <printWhenExpression><![CDATA[$F{alarm_state}==0]]></printWhenExpression></reportElement>
+        <graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+
+      <textField pattern="dd/MM/yyyy HH:mm:ss"><reportElement x="4"   y="2" width="105" height="11"/><textElement><font fontName="DejaVu Sans" size="6"/></textElement>
+        <textFieldExpression><![CDATA[$F{alarm_time}]]></textFieldExpression></textField>
+      <textField><reportElement x="115" y="2" width="50"  height="11"/><textElement><font fontName="DejaVu Sans" size="6"/></textElement>
+        <textFieldExpression><![CDATA[$F{alarm_state}==0?"ACTIVE":$F{alarm_state}==1?"ACK":"Closed"]]></textFieldExpression></textField>
+      <textField><reportElement x="170" y="2" width="35"  height="11"/><textElement><font fontName="DejaVu Sans" size="6"/></textElement>
+        <textFieldExpression><![CDATA[$F{priority}!=null?$F{priority}.toString():"—"]]></textFieldExpression></textField>
+      <textField isStretchWithOverflow="true"><reportElement x="210" y="2" width="100" height="11"/><textElement><font fontName="DejaVu Sans" size="6"/></textElement>
+        <textFieldExpression><![CDATA[$F{event_type_name}]]></textFieldExpression></textField>
+      <textField isStretchWithOverflow="true"><reportElement x="315" y="2" width="100" height="11"/><textElement><font fontName="DejaVu Sans" size="6"/></textElement>
+        <textFieldExpression><![CDATA[$F{access_point_name}!=null?$F{access_point_name}:($F{source_hostname}!=null?$F{source_hostname}:"—")]]></textFieldExpression></textField>
+      <textField isStretchWithOverflow="true"><reportElement x="420" y="2" width="95"  height="11"/><textElement><font fontName="DejaVu Sans" size="6"/></textElement>
+        <textFieldExpression><![CDATA[$F{entrance_name}!=null?$F{entrance_name}:"—"]]></textFieldExpression></textField>
+      <textField><reportElement x="520" y="2" width="90"  height="11"/><textElement><font fontName="DejaVu Sans" size="6"/></textElement>
+        <textFieldExpression><![CDATA[$F{last_name}!=null?$F{last_name}+", "+($F{initials}!=null?$F{initials}:""):"—"]]></textFieldExpression></textField>
+      <textField><reportElement x="615" y="2" width="65"  height="11"/><textElement><font fontName="DejaVu Sans" size="6"/></textElement>
+        <textFieldExpression><![CDATA[$F{card_number}!=null?$F{card_number}:"—"]]></textFieldExpression></textField>
+      <textField><reportElement x="685" y="2" width="95"  height="11"/><textElement><font fontName="DejaVu Sans" size="6"/></textElement>
+        <textFieldExpression><![CDATA[$F{ack_by_user}!=null?$F{ack_by_user}:"—"]]></textFieldExpression></textField>
+    </band>
+  </detail>
+
+  <!-- SUMMARY -->
+  <summary>
+    <band height="20">
+      <rectangle><reportElement x="0" y="0" width="782" height="20" backcolor="#6B0000"/><graphicElement><pen lineWidth="0"/></graphicElement></rectangle>
+      <staticText><reportElement x="4" y="4" width="120" height="12" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="8" isBold="true"/></textElement><text><![CDATA[Total Alarm Events:]]></text></staticText>
+      <textField><reportElement x="128" y="4" width="60" height="12" forecolor="#FFFFFF"/><textElement><font fontName="DejaVu Sans" size="8" isBold="true"/></textElement>
+        <textFieldExpression><![CDATA[$V{REPORT_COUNT}]]></textFieldExpression></textField>
+    </band>
+  </summary>
+
+  <pageFooter>
+    <band height="16">
+      <line><reportElement x="0" y="0" width="782" height="1" forecolor="#CCCCCC"/></line>
+      <staticText><reportElement x="0" y="3" width="400" height="10"/><textElement><font fontName="DejaVu Sans" size="6" isItalic="true"/></textElement><text><![CDATA[AEOS Alarm Report  |  CONFIDENTIAL – RESTRICTED ACCESS]]></text></staticText>
+      <textField><reportElement x="600" y="3" width="182" height="10"/><textElement textAlignment="Right"><font fontName="DejaVu Sans" size="6"/></textElement>
+        <textFieldExpression><![CDATA["Page " + $V{PAGE_NUMBER}]]></textFieldExpression></textField>
+    </band>
+  </pageFooter>
+
+</jasperReport>
